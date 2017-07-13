@@ -1042,11 +1042,15 @@ function! s:Make(options) abort
     return jobinfos
 endfunction
 
-function! s:AddExprCallback(jobinfo, prev_index) abort
+function! s:AddExprCallback(jobinfo, prev_list) abort
+    if s:need_to_postpone_loclist(a:jobinfo)
+        return s:queue_action('WinEnter', ['s:AddExprCallback',
+                    \ [a:jobinfo, a:prev_list] + a:000])
+    endif
     let maker = a:jobinfo.maker
     let file_mode = a:jobinfo.file_mode
     let list = file_mode ? getloclist(0) : getqflist()
-    let index = a:prev_index
+    let index = len(a:prev_list)-1
     unlet! s:postprocess  " vim73
     let s:postprocess = get(maker, 'postprocess', function('neomake#utils#CompressWhitespace'))
     if type(s:postprocess) != type([])
@@ -1161,7 +1165,7 @@ function! s:AddExprCallback(jobinfo, prev_index) abort
         call neomake#utils#DebugMessage(printf('WARN: seen entries with bufnr different from jobinfo.bufnr (%d): %s, current bufnr: %d.', a:jobinfo.bufnr, string(different_bufnrs), bufnr('%')))
     endif
 
-    return entries
+    return s:ProcessEntries(a:jobinfo, entries, a:prev_list)
 endfunction
 
 function! s:CleanJobinfo(jobinfo, ...) abort
@@ -1733,8 +1737,7 @@ function! s:ProcessJobOutput(jobinfo, lines, source, ...) abort
             endif
         endtry
 
-        let entries = s:AddExprCallback(a:jobinfo, len(prev_list)-1)
-        call s:ProcessEntries(a:jobinfo, entries, prev_list)
+        call s:AddExprCallback(a:jobinfo, prev_list)
     catch /^\%(Vim\%((\a\+)\)\=:\%(E48\|E523\)\)\@!/  " everything, but E48/E523 (sandbox / not allowed here)
         if v:exception ==# 'NeomakeTestsException'
             throw v:exception
